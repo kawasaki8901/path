@@ -212,7 +212,7 @@ func (p *Path) ChangeExt(ext Ext) {
 		// 現拡張子がない場合は付与
 		p.AddExt(ext)
 	} else {
-		*p = NewPath(p.FileNameWithoutExt().String() + ext.String())
+		*p = Join(p.Base(), NewPath(p.FileNameWithoutExt().String()+ext.String()))
 	}
 }
 
