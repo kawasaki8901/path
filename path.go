@@ -1,6 +1,6 @@
 package path
 
-// ファイル、ディレクトリのパスを扱うためのパッケージ
+// ファイル、ディレクトリのパス文字列を扱うためのパッケージ
 
 import (
 	"fmt"
@@ -19,6 +19,12 @@ type Ext string
 // パスを作成
 func NewPath(p string) Path {
 	return Path(p)
+}
+
+// カレントディレクトリのパスを取得
+func GetCurDir() Path {
+	p, _ := os.Getwd()
+	return NewPath(p)
 }
 
 // パスを文字列に変換
@@ -42,18 +48,22 @@ func (e Ext) Upper() Ext {
 }
 
 // パスの結合
-func (p Path) Join(element ...Path) Path {
-	elements := make([]string, 1+len(element))
-	elements[0] = string(p)
+func Join(element ...Path) Path {
+	elements := make([]string, len(element))
 	for i, e := range element {
-		elements[i+1] = string(e)
+		elements[i] = string(e)
 	}
 	return Path(filepath.Join(elements...))
 }
 
+// パスの結合
+func (p *Path) Append(element ...Path) {
+	*p = Join(append([]Path{*p}, element...)...)
+}
+
 // 最後の要素を取得
-func (p Path) Base() string {
-	return filepath.Base(string(p))
+func (p Path) Base() Path {
+	return Path(filepath.Base(string(p)))
 }
 
 // Path が存在するか判定
@@ -144,17 +154,17 @@ func (p Path) FileOpen() (*os.File, error) {
 }
 
 // ディレクトリ名を取得
-func (p Path) DirName() string {
-	return filepath.Dir(string(p))
+func (p Path) DirName() Path {
+	return Path(filepath.Dir(string(p)))
 }
 
 // ファイル名を取得、拡張子を含む
-func (p Path) FileName() string {
-	return filepath.Base(string(p))
+func (p Path) FileName() Path {
+	return Path(filepath.Base(string(p)))
 }
 
 // ファイル名を取得、拡張子を除く
-func (p Path) FileNameWithoutExt() string {
+func (p Path) FileNameWithoutExt() Path {
 	if p.Ext() == "" {
 		return p.Base()
 	}
@@ -162,23 +172,23 @@ func (p Path) FileNameWithoutExt() string {
 }
 
 // ファイル名を変更、拡張子は変更しない
-func (p *Path) ChangeFileName(name string) {
-	*p = NewPath(filepath.Join(p.DirName(), name+string(p.Ext())))
+func (p *Path) ChangeFileName(name Path) {
+	*p = Join(p.DirName(), Path(name.String()+p.Ext().String()))
 }
 
 // ファイル名の後ろに文字列を追加、拡張子は変更しない
 func (p *Path) AddPrefix(name string) {
-	*p = NewPath(filepath.Join(p.DirName(), name+p.FileName()))
+	*p = Join(p.DirName(), Path(name+p.FileNameWithoutExt().String()+p.Ext().String()))
 }
 
 // ファイル名の前に文字列を追加、拡張子は変更しない
 func (p *Path) AddSuffix(name string) {
-	*p = NewPath(filepath.Join(p.DirName(), p.FileNameWithoutExt()+name+p.Ext().String()))
+	*p = Join(p.DirName(), Path(p.FileNameWithoutExt().String()+name+p.Ext().String()))
 }
 
 // ファイル名は変更せず、ディレクトリ名を変更
 func (p *Path) ChangeDirName(dir Path) {
-	*p = dir.Join(NewPath(p.FileName()))
+	*p = Join(dir, p.FileName())
 }
 
 // 拡張子の付与
@@ -194,15 +204,15 @@ func (p Path) Ext() Ext {
 // 拡張子を変更
 func (p *Path) ChangeExt(ext Ext) {
 	if ext == "" {
-		// 拡張子が空の場合は削除
-		*p = NewPath(p.FileNameWithoutExt())
+		// 新拡張子が空の場合は、現拡張子を削除
+		*p = p.FileNameWithoutExt()
 		return
 	}
 	if p.Ext() == "" {
-		// 拡張子がない場合は付与
+		// 現拡張子がない場合は付与
 		p.AddExt(ext)
 	} else {
-		*p = NewPath(p.FileNameWithoutExt() + ext.String())
+		*p = NewPath(p.FileNameWithoutExt().String() + ext.String())
 	}
 }
 
@@ -241,13 +251,13 @@ func (p Path) Entries() (Entries, error) {
 	// パスを作成
 	entries := make(Entries, len(names))
 	for i, name := range names {
-		entries[i] = NewPath(filepath.Join(string(p), name))
+		entries[i] = Join(p, NewPath(name))
 	}
 	return entries, nil
 }
 
 // ディレクトリ内のファイル、ディレクトリを取得
-func GetEntries(p Path) (Entries, error) {
+func Grab(p Path) (Entries, error) {
 	return p.Entries()
 }
 
@@ -284,14 +294,7 @@ func (e Entries) ExtractFiles() Entries {
 }
 
 // Entries から指定の拡張子のファイルのみ抽出
-func (e Entries) ExtractExt(ext Ext) Entries {
-	return e.Filter(func(p Path) bool {
-		return p.Ext() == ext
-	})
-}
-
-// Entries から指定の拡張子(複数)のファイルのみ抽出
-func (e Entries) ExtractExts(exts []Ext) Entries {
+func (e Entries) ExtractExt(exts ...Ext) Entries {
 	return e.Filter(func(p Path) bool {
 		for _, ext := range exts {
 			if p.Ext() == ext {
@@ -306,39 +309,33 @@ func (e Entries) ExtractExts(exts []Ext) Entries {
 func (e Entries) ToString() []string {
 	result := make([]string, len(e))
 	for i, entry := range e {
-		result[i] = string(entry)
+		result[i] = entry.String()
 	}
 	return result
 }
 
 // Entries をすべて絶対パスに変換
 func (e Entries) ToAbs() (Entries, error) {
-	entries := make(Entries, len(e))
-	for i, entry := range e {
-		abs, err := entry.Abs()
-		if err != nil {
-			return nil, err
-		}
-		entries[i] = abs
-	}
-	return entries, nil
+	return e.ForEachWithError(func(p Path) (Path, error) {
+		return p.Abs()
+	})
 }
 
 // Entries からファイル名のみ抽出
 func (e Entries) ToBase() Entries {
-	entries := make(Entries, len(e))
-	for i, entry := range e {
-		entries[i] = NewPath(entry.Base())
-	}
-	return entries
+	return e.ForEach(func(p Path) Path {
+		return p.Base()
+	})
 }
 
 // Entries から拡張子のみ抽出、重複を除外
 func (e Entries) ToExt() []Ext {
+	// map で重複を除外
 	extsMap := map[Ext]struct{}{}
 	for _, entry := range e {
 		extsMap[entry.Ext()] = struct{}{}
 	}
+	// ソートして返す
 	result := make([]Ext, 0, len(extsMap))
 	for ext := range extsMap {
 		result = append(result, ext)
@@ -349,34 +346,46 @@ func (e Entries) ToExt() []Ext {
 	return result
 }
 
-// Entries 全てに共通の処理を適用
-func (e Entries) ForEach(f func(*Path)) {
-	for i := range e {
-		f(&e[i])
+// Entries 全てに共通の処理を適用して返す。
+func (e Entries) ForEach(proc func(Path) Path) Entries {
+	neu := make(Entries, len(e))
+	for i := 0; i < len(e); i++ {
+		neu[i] = proc(e[i])
 	}
+	return neu
+}
+
+// Entries 全てに共通の処理を適用して返す。エラー対応版。
+func (e Entries) ForEachWithError(proc func(Path) (Path, error)) (Entries, error) {
+	neu := make(Entries, len(e))
+	for i := 0; i < len(e); i++ {
+		p, err := proc(e[i])
+		if err != nil {
+			return nil, err
+		}
+		neu[i] = p
+	}
+	return neu, nil
 }
 
 // Entries の全ての要素がファイルであると仮定し、各ファイルのファイル名に対して処理を適用する関数
-func (e Entries) ForEachFileName(f func(*string)) {
-	for i, entry := range e {
-		// ディレクトリ部分とファイル名部分に分解
-		dir := entry.DirName()
-		base := entry.FileName()
-		// f に対して、ファイル名（拡張子含む）のポインタを渡す
-		f(&base)
-		// 変更後のファイル名でエントリを更新（ディレクトリ部分はそのまま）
-		e[i] = NewPath(filepath.Join(dir, base))
-	}
+func (e Entries) ForEachFileName(proc func(Path) Path) Entries {
+	return e.ForEach(func(p Path) Path {
+		dir := p.DirName()
+		base := p.FileName()
+		return Join(dir, proc(base))
+	})
 }
 
 // PrependSequentialNumbers は、
 // Entries の全てのファイル名の先頭に連番を付与して更新する関数です。
 // ファイル数に応じて連番の桁数を自動設定します。
-func (e Entries) PrependSequentialNumbers() {
+func (e Entries) PrependSequentialNumbers() Entries {
 	digits := len(strconv.Itoa(len(e)))
 	counter := 0
-	e.ForEachFileName(func(name *string) {
+	neu := e.ForEachFileName(func(name Path) Path {
 		counter++
-		*name = fmt.Sprintf("%0*d_%s", digits, counter, *name)
+		return NewPath(fmt.Sprintf("%0*d_%s", digits, counter, name))
 	})
+	return neu
 }
