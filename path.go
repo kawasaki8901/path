@@ -66,6 +66,11 @@ func (p Path) Base() Path {
 	return Path(filepath.Base(string(p)))
 }
 
+// ディレクトリを取得
+func (p Path) Dir() Path {
+	return Path(filepath.Dir(string(p)))
+}
+
 // Path が存在するか判定
 func (p Path) IsExist() bool {
 	_, err := os.Stat(string(p))
@@ -212,7 +217,7 @@ func (p *Path) ChangeExt(ext Ext) {
 		// 現拡張子がない場合は付与
 		p.AddExt(ext)
 	} else {
-		*p = Join(p.Base(), NewPath(p.FileNameWithoutExt().String()+ext.String()))
+		*p = Join(p.Dir(), NewPath(p.FileNameWithoutExt().String()+ext.String()))
 	}
 }
 
