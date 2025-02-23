@@ -261,6 +261,15 @@ func Grab(p Path) (Entries, error) {
 	return p.Entries()
 }
 
+// []string から Entries に変換
+func ToEntries(paths []string) Entries {
+	entries := make(Entries, len(paths))
+	for i, path := range paths {
+		entries[i] = NewPath(path)
+	}
+	return entries
+}
+
 // Entries から抽出する一般処理
 func (e Entries) Filter(f func(Path) bool) Entries {
 	entries := Entries{}
